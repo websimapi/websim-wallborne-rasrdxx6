@@ -14,6 +14,7 @@ function remove(id){const r=remotes.get(id);if(r){scene.remove(r.root,...r.cable
 function count(){$('online').textContent=remotes.size+(joined?1:0);}
 function send(m){if(!socket||!ready)return;try{socket.send(m);}catch{ready=false;status('Reconnecting');handlers.disconnected?.();}}
 function receive(event){let m;try{m=JSON.parse(event.data);}catch{return;}
+if(m.type==='guardEngage'){handlers.guardEngage?.(m);return;}
 if(m.type==='buildingDamage'){handlers.buildingDamage?.(m);return;}
 if(m.type==='welcome'){for(const event of m.ruins||[])handlers.buildingDamage?.(event);selfId=m.id;offset=m.time-Date.now();for(const id of [...remotes.keys()])remove(id);ready=true;joined=false;applyTitanSnapshot(m.titans);for(const p of m.players)roster(p);handlers.loaded(m.character,m.signedIn);status('Live');$('start').disabled=false;$('start').textContent='Tap to join';if(desiredJoin)send({type:'join'});}
 else if(m.type==='joined'){joined=true;desiredJoin=true;handlers.joined(m.character);count();}

@@ -19,3 +19,11 @@ Destruction:
 - Cannon-es simulates structural-fragment gravity, rotation, ground contact, nearby standing-wall contact and inter-fragment contact. Small nonstructural trim uses cheaper ballistic motion and ground settling. Sleeping fragments remain rendered and gain grapple/player collision at their settled transforms.
 - Active rigid-body debris is budgeted to 220 pieces; queued fragments are released as previous ones settle. Remote impacts initially use a low-detail ruin silhouette and reconstruct their seeded detailed damage when approached. This is a chunk-based real-time approximation, not finite-element simulation or one independent body for every brick in all 47,444 buildings.
 - Damage is room-session state, not permanent database state. Settled fragment trajectories are simulated locally, so exact debris positions can differ slightly across clients.
+
+## Wall-reference revision
+
+The three walls now follow shared circle/capsule-union boundaries, with four outward districts per ring. Rendered wall segments, grapple colliders, player wall collision, district classification, minimap outlines, plot setbacks and titan exclusion all use the revised profile. Main gates remain sealed. Twenty-four elevated posts are shared by server guard logic and client presentation.
+
+Townhouses have increased story heights, physical landing floors, alternating dogleg stair flights with real floor openings, and half-timber/dormer detailing. Detailed interiors still stream nearby; distant facades retain matching dimensions.
+
+Citizens have class/rank data, detailed local skinned model assets, cloth overlays and VME equipment for military characters. Backend AI returns validated speaker/target dialogue decisions; the client triggers requests only near residents and provides a reply field when addressed. Guard targeting and damage run on the server, with launch events driving the visible VME flight.
