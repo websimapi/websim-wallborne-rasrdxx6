@@ -3,7 +3,7 @@ import {addCollider} from './collision.js';
 import {createCity} from './city.js';
 import {wallPaths,wallRadius,wallClearance,cityRegion,guardPosts} from './server.js';
 export let city=null;
-export function updateWorld(dt,focus){city?.update(dt,focus);}
+export function updateWorld(dt,focus,camera){city?.update(dt,focus,camera);}
 export function damageBuilding(event){city?.damage(event);}
 export const RADII=[1200,2700,4500];
 export const towers=[],solids=[];
@@ -14,27 +14,30 @@ function index(map,item,x,z,w,d){for(let i=Math.floor((x-w)/CELL);i<=Math.floor(
 const nearby=(map,p)=>map.get(Math.floor(p.x/CELL)+','+Math.floor(p.z/CELL))||[];
 export function createWorld(scene){
 const loader=new T.TextureLoader();
-function tex(name){const t=loader.load('img/'+name+'-seamless.png');t.colorSpace=T.SRGBColorSpace;t.wrapS=t.wrapT=T.RepeatWrapping;t.anisotropy=8;t.generateMipmaps=true;t.minFilter=T.LinearMipmapLinearFilter;t.magFilter=T.LinearFilter;return t;}
-const maps={stone:tex('stone'),plaster:tex('plaster'),tiles:tex('tiles'),timber:tex('timber')};
+function tex(name){const t=loader.load('img/'+name+'.png');t.colorSpace=T.SRGBColorSpace;t.wrapS=t.wrapT=T.RepeatWrapping;t.anisotropy=16;t.generateMipmaps=true;t.minFilter=T.LinearMipmapLinearFilter;t.magFilter=T.LinearFilter;return t;}
+const maps={stone:tex('paving-tile'),plaster:tex('plaster-tile'),tiles:tex('roof-tile'),timber:tex('wood-tile')};
 const mat=(c,map=null)=>{const m=new T.MeshStandardMaterial({color:c,map,roughness:.94});if(map)m.onBeforeCompile=shader=>{shader.vertexShader=shader.vertexShader.replace('#include <uv_vertex>',`#include <uv_vertex>
 #ifdef USE_MAP
 vec4 surfacePosition=vec4(position,1.0);
+vec3 tilePosition=position;
 vec3 surfaceNormal=normal;
 #ifdef USE_INSTANCING
 surfacePosition=instanceMatrix*surfacePosition;
+tilePosition*=vec3(length(instanceMatrix[0].xyz),length(instanceMatrix[1].xyz),length(instanceMatrix[2].xyz));
 mat3 instanceNormalMatrix=mat3(instanceMatrix);
 surfaceNormal/=vec3(dot(instanceNormalMatrix[0],instanceNormalMatrix[0]),dot(instanceNormalMatrix[1],instanceNormalMatrix[1]),dot(instanceNormalMatrix[2],instanceNormalMatrix[2]));
 surfaceNormal=instanceNormalMatrix*surfaceNormal;
 #endif
 surfacePosition=modelMatrix*surfacePosition;
 surfaceNormal=normalize(mat3(modelMatrix)*surfaceNormal);
-vec3 surfaceAxis=abs(surfaceNormal);
-vMapUv=(surfaceAxis.y>surfaceAxis.x&&surfaceAxis.y>surfaceAxis.z?surfacePosition.xz:surfaceAxis.x>surfaceAxis.z?surfacePosition.zy:surfacePosition.xy)*.35;
+vec3 surfaceAxis=abs(normal);
+vMapUv=(surfaceAxis.y>surfaceAxis.x&&surfaceAxis.y>surfaceAxis.z?tilePosition.xz:surfaceAxis.x>surfaceAxis.z?tilePosition.zy:tilePosition.xy)*.20;
 #endif`);};return m;};
 const stone=mat('#b4b1a1',maps.plaster),lightStone=mat('#d4d0bd',maps.plaster),roof=mat('#c8a18a',maps.tiles),plaster=mat('#e0d3b5',maps.plaster),wood=mat('#514338',maps.timber),dark=mat('#27363a'),grass=mat('#718166'),metal=mat('#424a49');
 grass.polygonOffset=true;grass.polygonOffsetFactor=1;grass.polygonOffsetUnits=2;
 // Continuous mineral paving ties the dense street blocks together without grass gaps.
-for(const [inner,outer,color]of [[0,1200,'#b5ad96'],[1200,2700,'#a49b83'],[2700,4490,'#96886d']]){const geo=inner?new T.RingGeometry(inner,outer,192):new T.CircleGeometry(outer,128),surface=new T.Mesh(geo,mat(color,maps.stone));surface.rotation.x=-Math.PI/2;surface.position.y=.012;surface.receiveShadow=true;scene.add(surface);}
+// One ground surface only: no coplanar grass/paving rings.
+const paving=mat('#bdb6a5',maps.stone),compilePaving=paving.onBeforeCompile;paving.onBeforeCompile=shader=>{compilePaving(shader);shader.vertexShader='varying vec2 groundXZ;\n'+shader.vertexShader;shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\ngroundXZ=(modelMatrix*vec4(position,1.0)).xz;');shader.fragmentShader='varying vec2 groundXZ;\n'+shader.fragmentShader;shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\nvec2 q=abs(groundXZ);float edge=min(length(q)-4490.0,min(length(vec2(q.x,q.y-4600.0))-250.0,length(vec2(q.x-4600.0,q.y))-250.0));edge=min(edge,min(max(q.x-250.0,q.y-4600.0),max(q.y-250.0,q.x-4600.0)));float urban=1.0-smoothstep(-2.0,2.0,edge);diffuseColor.rgb=mix(vec3(0.24,0.29,0.17),diffuseColor.rgb,urban);');};paving.customProgramCacheKey=()=> 'single-ground-v3';
 const box=new T.BoxGeometry(1,1,1),cyl=new T.CylinderGeometry(1,1,1,8);
 // A real gabled prism, not a four-sided cone perched on a solid building.
 const shape=new T.Shape();shape.moveTo(-.5,0);shape.lineTo(.5,0);shape.lineTo(0,1);shape.closePath();const roofGeo=new T.ExtrudeGeometry(shape,{depth:1,bevelEnabled:false,steps:1});roofGeo.translate(0,0,-.5);
@@ -43,7 +46,7 @@ function inst(geo,material,x,y,z,sx,sy,sz,ry=0,physical=false,rough=false){const
 function cube(material,x,y,z,sx,sy,sz,ry=0,physical=false){inst(box,material,x,y,z,sx,sy,sz,ry,physical);}
 function solid(material,x,y,z,sx,sy,sz){cube(material,x,y,z,sx,sy,sz,0,true);const b={x,z,w:sx/2,d:sz/2,minY:y-sy/2,h:y+sy/2};solids.push(b);index(playerCells,b,x,z,b.w+.8,b.d+.8);}
 function roofSolid(x,z,w,d,y,h){const b={x,z,w,d,y,h};index(roofCells,b,x,z,w+.6,d+.6);}
-const ground=new T.Mesh(new T.PlaneGeometry(40000,40000),grass);ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;ground.userData.grappleSurface=true;scene.add(ground);
+const ground=new T.Mesh(new T.PlaneGeometry(40000,40000),paving);ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;ground.userData.grappleSurface=true;scene.add(ground);
 // Three nested walls with four outward-projecting districts per ring.
 const paths=wallPaths();
 paths.forEach((path,ring)=>{const h=80+ring*5;for(let i=0;i<path.length;i++){const a=path[i],b=path[(i+1)%path.length],dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz),x=(a.x+b.x)/2,z=(a.z+b.z)/2,angle=Math.atan2(-dz,dx);

@@ -28,14 +28,14 @@ export function createArchitecture({cube,inst,solid,roofSolid,box,roofGeo,cyl,ma
  panel((cursor+length/2)/2,h/2,length/2-cursor,h);
  }
  face('x',-d/2,w,true);face('x',d/2,w);face('z',-w/2,d,spec.variant===4);face('z',w/2,d,spec.variant===1);
- body(wood,0,-.04,0,w,.16,d);body(wood,0,h,0,w,.32,d);
+ body(wood,0,.04,0,w,.2,d);body(wood,0,h,0,w,.32,d);
  const roofHeight=spec.roof||(rich?6:poor?3.5:4.5);
  inst(roofGeo,tile,x,h+.16,z,w+1.8,roofHeight,d+1.8,0,true);
  roofSolid(x,z,w/2+.9,d/2+.9,h+.16,roofHeight);
  // Bay extensions and cross-gables vary the footprint and skyline.
  if(spec.variant===1||spec.variant===4){
  const side=spec.variant===1?1:-1,bw=w*.28,bd=d*.38,bx=side*(w/2+bw/2),bz=d*.1;
- body(wall,bx,h*.38,bz+bd/2,bw,h*.76,.5);body(wall,bx,h*.38,bz-bd/2,bw,h*.76,.5);body(wall,side*(w/2+bw),h*.38,bz,.5,h*.76,bd);body(wood,bx,-.04,bz,bw,.16,bd);
+ body(wall,bx,h*.38,bz+bd/2,bw,h*.76,.5);body(wall,bx,h*.38,bz-bd/2,bw,h*.76,.5);body(wall,side*(w/2+bw),h*.38,bz,.5,h*.76,bd);body(wood,bx,.04,bz,bw,.2,bd);
  inst(roofGeo,tile,x+bx,h*.76,z+bz,bw+1,roofHeight*.7,bd+1,Math.PI/2,true);
  // Remove a side-wall section through the extension's doorway in the collector.
  spec.bay={side,bz,width:bd};
@@ -80,7 +80,7 @@ export function createArchitecture({cube,inst,solid,roofSolid,box,roofGeo,cyl,ma
  // Dividing wall creates a bedroom and a receiving room with a walk-through doorway.
  const partition=d*.12,span=(w-3.2)/2;
  for(const s of [-1,1])body(plaster,s*(1.6+span/2),h*.4,partition,span,h*.8,.3);
- deco(rug,0,.06,-d*.2,w*.45,.025,d*.3);
+ deco(rug,0,.18,-d*.2,w*.45,.025,d*.3);
  for(const s of [-1,1]){deco(trim,s*(w/2+1),3,-d/2-1,.8,6,.8);inst(cyl,trim,x+s*(w/2+1),6.2,z-d/2-1,.7,.4,.7);deco(gold,s*w*.3,h-1.8,-d/2-.4,1,2.2,.12);}
  deco(trim,0,h-.3,-d/2-.7,w+4,.8,2.3);
  // Entrance garden, low hedges, planters and a royal crest.
