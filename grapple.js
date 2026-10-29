@@ -1,6 +1,6 @@
 import * as T from 'three';
 import {sweepWorld,resolveParticle} from './collision.js';
-const COUNT=41,MAX_CABLE=850,GRAVITY=9.81,HEAD_RADIUS=.14;
+const COUNT=41,MAX_CABLE=850,GRAVITY=9.81,HEAD_RADIUS=.14,RECALL_SPEED=360,READY_RADIUS=3;
 const up=new T.Vector3(0,1,0);
 export class Grapple {
  constructor(scene,onSnag){
@@ -24,6 +24,8 @@ export class Grapple {
  }else{
  const substeps=Math.max(1,Math.ceil(dt/(1/120))),h=dt/substeps;
  for(let s=0;s<substeps&&this.active;s++){
+ // Dock within reach, before contact handling can snag a nearly returned hook.
+ if((this.mode==='returning'||this.mode==='snagged')&&this.tip.distanceToSquared(this.hand)<=READY_RADIUS*READY_RADIUS){this.reset();break;}
  if(this.mode==='snagged'){
  this.snagAge+=h;const pull=this.hand.clone().sub(this.tip).normalize();
  // A barb only comes free when the pull direction leaves all contact planes.
@@ -36,10 +38,13 @@ export class Grapple {
  // Follow the draped cable rather than cutting a straight path through a corner.
  for(let i=COUNT-3;i>0;i--){if(this.points[i].distanceTo(this.tip)>1.8){destination=this.points[i];break;}}
  if(this.tip.distanceTo(this.hand)<5)destination=this.hand;
- const direction=destination.clone().sub(this.tip).normalize(),distance=this.tip.distanceTo(this.hand),speed=Math.min(65,Math.max(3,distance*5));
- const radial=this.velocity.dot(direction);this.velocity.addScaledVector(direction,T.MathUtils.clamp((speed-radial)*14,-900,900)*h);
- this.velocity.multiplyScalar(Math.exp(-.8*h));if(this.velocity.length()>90)this.velocity.setLength(90);
- this.ropeLength=Math.max(.4,this.ropeLength-65*h);
+ const direction=destination.clone().sub(this.tip).normalize();
+ const handVelocity=this.hand.clone().sub(this.previousHand).divideScalar(Math.max(dt,.001)).clampLength(0,145);
+ // Strong steering removes outbound momentum and keeps up with a moving player.
+ const speed=Math.min(RECALL_SPEED,Math.max(120,this.tip.distanceTo(destination)/h));
+ const targetVelocity=direction.multiplyScalar(speed).add(handVelocity);
+ this.velocity.lerp(targetVelocity,1-Math.exp(-45*h));
+ this.ropeLength=Math.max(.4,this.ropeLength-RECALL_SPEED*h);
  }
  this.velocity.y-=GRAVITY*h;this.velocity.multiplyScalar(Math.exp(-(this.mode==='flying'?.035:.16)*h));
  const old=this.tip.clone(),next=old.clone().addScaledVector(this.velocity,h);const hit=sweepWorld(old,next,HEAD_RADIUS,dynamic);
@@ -57,11 +62,11 @@ export class Grapple {
  if(this.tip.y<HEAD_RADIUS){this.tip.y=HEAD_RADIUS;if(this.velocity.y<0)this.velocity.y=0;this.velocity.x*=Math.exp(-8*h);this.velocity.z*=Math.exp(-8*h);if(this.mode==='flying')this.mode='loose';}
  const offset=this.tip.clone().sub(this.hand),distance=offset.length();if(distance>MAX_CABLE){offset.multiplyScalar(1/distance);this.tip.copy(this.hand).addScaledVector(offset,MAX_CABLE);const outward=this.velocity.dot(offset);if(outward>0)this.velocity.addScaledVector(offset,-outward);if(this.mode==='flying')this.mode='loose';}
  if(!recalling)this.ropeLength=Math.min(MAX_CABLE,Math.max(this.ropeLength,this.tip.distanceTo(this.hand)*1.015+.5));
- if(recalling&&this.tip.distanceTo(this.hand)<.65){this.reset();break;}
+ if(recalling&&this.tip.distanceToSquared(this.hand)<=READY_RADIUS*READY_RADIUS){this.reset();break;}
  }
  }
  if(!this.active)return;
- if(this.mode==='snagged')this.ropeLength=Math.max(this.hand.distanceTo(this.tip)+.1,this.ropeLength-65*dt);
+ if(this.mode==='snagged')this.ropeLength=Math.max(this.hand.distanceTo(this.tip)+.1,this.ropeLength-RECALL_SPEED*dt);
  // A spool cannot consume cable faster than the head can get past an obstruction.
  if(this.mode==='returning')this.ropeLength=Math.max(this.ropeLength,this.hand.distanceTo(this.tip));
  this.simulateCable(dt);this.previousHand.copy(this.hand);
