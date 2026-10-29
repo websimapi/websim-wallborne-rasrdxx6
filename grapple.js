@@ -3,11 +3,12 @@ import {sweepWorld,resolveParticle} from './collision.js';
 const COUNT=41,MAX_CABLE=850,GRAVITY=9.81,HEAD_RADIUS=.14,RECALL_SPEED=360,READY_RADIUS=3;
 const up=new T.Vector3(0,1,0);
 export class Grapple {
- constructor(scene,onSnag){
+ constructor(scene,onSnag,side=0){
+ this.side=side;
  this.scene=scene;this.onSnag=onSnag;this.mode='idle';this.tip=new T.Vector3();this.velocity=new T.Vector3();this.hand=new T.Vector3();this.previousHand=new T.Vector3();this.points=Array.from({length:COUNT},()=>new T.Vector3());this.previous=this.points.map(p=>p.clone());this.ropeLength=0;this.age=0;this.object=null;this.localAnchor=new T.Vector3();this.contactNormal=new T.Vector3();this.lastContact=null;this.snagNormals=[];this.previousDt=1/60;
  const mat=new T.MeshStandardMaterial({color:'#9ba9ac',metalness:.85,roughness:.3});this.head=new T.Group();const stem=new T.Mesh(new T.CylinderGeometry(.045,.065,.55,6),mat);this.head.add(stem);
  for(let i=0;i<3;i++){const claw=new T.Mesh(new T.TorusGeometry(.18,.03,5,10,Math.PI*1.25),mat);claw.rotation.y=i*Math.PI*2/3;claw.position.y=.13;this.head.add(claw);}
- this.head.visible=false;scene.add(this.head);this.lines=[];for(let j=0;j<2;j++){const geo=new T.BufferGeometry();geo.setAttribute('position',new T.BufferAttribute(new Float32Array(COUNT*3),3));const line=new T.Line(geo,new T.LineBasicMaterial({color:'#293b40'}));line.frustumCulled=false;line.visible=false;scene.add(line);this.lines.push(line);}
+ this.head.visible=false;scene.add(this.head);this.lines=[];for(let j=0;j<(side?1:2);j++){const geo=new T.BufferGeometry();geo.setAttribute('position',new T.BufferAttribute(new Float32Array(COUNT*3),3));const line=new T.Line(geo,new T.LineBasicMaterial({color:'#293b40'}));line.frustumCulled=false;line.visible=false;scene.add(line);this.lines.push(line);}
  }
  get active(){return this.mode!=='idle';}
  get latched(){return this.mode==='latched';}
@@ -88,7 +89,7 @@ export class Grapple {
  this.points[0].copy(this.hand);this.points[COUNT-1].copy(this.tip);
  }
  render(origin,right){if(!this.active)return;this.head.position.copy(this.tip);const dir=this.velocity.lengthSq()>1?this.velocity.clone().normalize():this.hand.clone().sub(this.tip).normalize();if(dir.lengthSq()>.01)this.head.quaternion.setFromUnitVectors(up,dir);
- for(let j=0;j<this.lines.length;j++){const data=this.lines[j].geometry.attributes.position;for(let i=0;i<COUNT;i++){const p=this.points[i],offset=(j===0?-.2:.2)*Math.max(0,1-i/5);const x=i===0?origin.x:p.x,y=i===0?origin.y:p.y,z=i===0?origin.z:p.z;data.setXYZ(i,x+right.x*offset,y-.12*Math.max(0,1-i/3),z+right.z*offset);}data.needsUpdate=true;}
+ for(let j=0;j<this.lines.length;j++){const data=this.lines[j].geometry.attributes.position;for(let i=0;i<COUNT;i++){const p=this.points[i],offset=(this.side?0:(j===0?-.2:.2))*Math.max(0,1-i/5);const x=i===0?origin.x:p.x,y=i===0?origin.y:p.y,z=i===0?origin.z:p.z;data.setXYZ(i,x+right.x*offset,y-.12*Math.max(0,1-i/3),z+right.z*offset);}data.needsUpdate=true;}
  }
  networkData(){if(!this.active)return null;const points=[];for(let i=0;i<COUNT;i+=4){const p=this.points[i];points.push([Math.round(p.x*100)/100,Math.round(p.y*100)/100,Math.round(p.z*100)/100]);}return{mode:this.mode,points};}
 }

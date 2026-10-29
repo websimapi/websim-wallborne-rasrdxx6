@@ -39,12 +39,14 @@ const elapsed=Math.min(.6,Math.max(.04,(now-p.lastMove)/1000));if(distance(p,m)>
 p.x=m.x;p.y=m.y;p.z=m.z;p.yaw=m.yaw%(Math.PI*2);p.pitch=Math.max(-1.45,Math.min(1.45,m.pitch));p.lastMove=now;p.dirty=true;
 const validHook=m.hook&&[m.hook.x,m.hook.y,m.hook.z].every(Number.isFinite)&&distance(p,m.hook)<875&&p.step>=2&&p.gas>0;
 p.hook=validHook?{x:q(m.hook.x),y:q(m.hook.y),z:q(m.hook.z)}:null;p.boost=!!m.boost;
-p.cable=null;
-if(m.cable&&['flying','loose','returning','snagged','latched'].includes(m.cable.mode)&&Array.isArray(m.cable.points)&&m.cable.points.length>=2&&m.cable.points.length<=13){
-const pts=m.cable.points;let length=0,valid=true;
-for(let i=0;i<pts.length;i++){const a=pts[i];if(!Array.isArray(a)||a.length!==3||!a.every(Number.isFinite)||Math.hypot(a[0]-p.x,a[1]-p.y,a[2]-p.z)>1100){valid=false;break;}if(i)length+=Math.hypot(a[0]-pts[i-1][0],a[1]-pts[i-1][1],a[2]-pts[i-1][2]);}
-if(valid&&length<1400)p.cable={mode:m.cable.mode,points:pts.map(a=>a.map(q))};
-}
+const validateCable=c=>{
+if(!c||!['flying','loose','returning','snagged','latched'].includes(c.mode)||!Array.isArray(c.points)||c.points.length<2||c.points.length>13)return null;
+const pts=c.points;let length=0;
+for(let i=0;i<pts.length;i++){const a=pts[i];if(!Array.isArray(a)||a.length!==3||!a.every(Number.isFinite)||Math.hypot(a[0]-p.x,a[1]-p.y,a[2]-p.z)>1100)return null;if(i)length+=Math.hypot(a[0]-pts[i-1][0],a[1]-pts[i-1][1],a[2]-pts[i-1][2]);}
+return length<1400?{mode:c.mode,points:pts.map(a=>a.map(q))}:null;
+};
+p.cable=validateCable(m.cable);
+if(m.cable&&typeof m.cable==='object'&&('left' in m.cable||'right' in m.cable)){const left=validateCable(m.cable.left),right=validateCable(m.cable.right);p.cable=left||right?{...(left||right),left,right}:null;}
 let old=p.step;if(p.step===0&&distance(p,{x:0,y:2,z:1060})<7)p.step=1;else if(p.step===1&&p.y>4)p.step=2;else if(p.step===2&&p.hook&&p.y>=22&&p.hookFor>=.5)p.step=3;
 if(old!==p.step){privateStats(p);p.lastSave=0;}return;}
 if(m.type==='slash'){if(p.step<3||now-p.lastSlash<400)return;p.lastSlash=now;room.broadcast({type:'slash',id:p.id});
