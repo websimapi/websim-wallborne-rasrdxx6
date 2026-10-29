@@ -1,5 +1,6 @@
 import * as T from 'three';
 import {addCollider} from './collision.js';
+import {createTerrain,streetHeight} from './terrain.js';
 import {createCity} from './city.js';
 import {wallPaths,wallRadius,wallClearance,cityRegion,guardPosts} from './server.js';
 export let city=null;
@@ -37,7 +38,9 @@ const stone=mat('#b4b1a1',maps.plaster),lightStone=mat('#d4d0bd',maps.plaster),r
 grass.polygonOffset=true;grass.polygonOffsetFactor=1;grass.polygonOffsetUnits=2;
 // Continuous mineral paving ties the dense street blocks together without grass gaps.
 // One ground surface only: no coplanar grass/paving rings.
-const paving=mat('#bdb6a5',maps.stone),compilePaving=paving.onBeforeCompile;paving.onBeforeCompile=shader=>{compilePaving(shader);shader.vertexShader='varying vec2 groundXZ;\n'+shader.vertexShader;shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\ngroundXZ=(modelMatrix*vec4(position,1.0)).xz;');shader.fragmentShader='varying vec2 groundXZ;\n'+shader.fragmentShader;shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\nvec2 q=abs(groundXZ);float edge=min(length(q)-4490.0,min(length(vec2(q.x,q.y-4600.0))-250.0,length(vec2(q.x-4600.0,q.y))-250.0));edge=min(edge,min(max(q.x-250.0,q.y-4600.0),max(q.y-250.0,q.x-4600.0)));float urban=1.0-smoothstep(-2.0,2.0,edge);diffuseColor.rgb=mix(vec3(0.24,0.29,0.17),diffuseColor.rgb,urban);');};paving.customProgramCacheKey=()=> 'single-ground-v3';
+const paving=new T.MeshStandardMaterial({color:'#bdb6a5',map:maps.stone,roughness:.94});
+paving.onBeforeCompile=shader=>{shader.vertexShader='varying vec2 groundXZ;\n'+shader.vertexShader;shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\ngroundXZ=(modelMatrix*vec4(position,1.0)).xz;');shader.fragmentShader='varying vec2 groundXZ;\n'+shader.fragmentShader;shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>','#include <map_fragment>\nvec2 q=abs(groundXZ);float edge=min(length(q)-4490.0,min(length(vec2(q.x,q.y-4600.0))-250.0,length(vec2(q.x-4600.0,q.y))-250.0));edge=min(edge,min(max(q.x-250.0,q.y-4600.0),max(q.y-250.0,q.x-4600.0)));float urban=1.0-smoothstep(-2.0,2.0,edge);diffuseColor.rgb=mix(vec3(0.24,0.29,0.17),diffuseColor.rgb,urban);');};paving.customProgramCacheKey=()=> 'stable-terrain-v4';
+const road=new T.MeshStandardMaterial({color:'#b4aa92',map:maps.stone,roughness:.94});
 const box=new T.BoxGeometry(1,1,1),cyl=new T.CylinderGeometry(1,1,1,8);
 // A real gabled prism, not a four-sided cone perched on a solid building.
 const shape=new T.Shape();shape.moveTo(-.5,0);shape.lineTo(.5,0);shape.lineTo(0,1);shape.closePath();const roofGeo=new T.ExtrudeGeometry(shape,{depth:1,bevelEnabled:false,steps:1});roofGeo.translate(0,0,-.5);
@@ -46,7 +49,7 @@ function inst(geo,material,x,y,z,sx,sy,sz,ry=0,physical=false,rough=false){const
 function cube(material,x,y,z,sx,sy,sz,ry=0,physical=false){inst(box,material,x,y,z,sx,sy,sz,ry,physical);}
 function solid(material,x,y,z,sx,sy,sz){cube(material,x,y,z,sx,sy,sz,0,true);const b={x,z,w:sx/2,d:sz/2,minY:y-sy/2,h:y+sy/2};solids.push(b);index(playerCells,b,x,z,b.w+.8,b.d+.8);}
 function roofSolid(x,z,w,d,y,h){const b={x,z,w,d,y,h};index(roofCells,b,x,z,w+.6,d+.6);}
-const ground=new T.Mesh(new T.PlaneGeometry(40000,40000),paving);ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;ground.userData.grappleSurface=true;scene.add(ground);
+createTerrain(scene,paving,road);
 // Three nested walls with four outward-projecting districts per ring.
 const paths=wallPaths();
 paths.forEach((path,ring)=>{const h=80+ring*5;for(let i=0;i<path.length;i++){const a=path[i],b=path[(i+1)%path.length],dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz),x=(a.x+b.x)/2,z=(a.z+b.z)/2,angle=Math.atan2(-dz,dx);
@@ -63,9 +66,7 @@ paths.forEach((path,ring)=>{const h=80+ring*5;for(let i=0;i<path.length;i++){con
  }
 });
 for(const post of guardPosts()){solid(stone,post.x,post.y/2,post.z,23,post.y,23);cube(lightStone,post.x,post.y-.4,post.z,29,.8,29,0,true);for(const side of [-1,1]){cube(lightStone,post.x+side*14,post.y+.6,post.z,1.2,1.2,29);cube(lightStone,post.x,post.y+.6,post.z+side*14,29,1.2,1.2);}const t=new T.Vector3(post.x,post.y,post.z);t.ring=post.ring;towers.push(t);}
-// Raised, non-overlapping road sections eliminate coplanar ground/intersection flicker.
-const road=mat('#b4aa92',maps.stone);road.polygonOffset=true;road.polygonOffsetFactor=-1;road.polygonOffsetUnits=-2;
-cube(road,0,.09,0,43,.18,10300);for(const s of [-1,1])cube(road,s*(4950+21.5)/2,.09,0,4950-21.5,.18,30);
+// Boulevard cells are part of the terrain mesh, never overlaid on the ground.
 const braceUp=new T.BoxGeometry(1,.055,.22);braceUp.rotateZ(Math.PI/4);const braceDown=new T.BoxGeometry(1,.055,.22);braceDown.rotateZ(-Math.PI/4);
 const mats={braceUp,braceDown,stone,plaster,wood,roof,dark,trim:lightStone,gold:mat('#b49b54'),cloth:mat('#887a65'),poorPlaster:mat('#a9987c',maps.plaster),poorRoof:mat('#78685a',maps.tiles),slate:mat('#b29984',maps.tiles),rug:mat('#693b3a'),glass:mat('#4d6850')};
 city=createCity(scene,{box,roofGeo,cyl,mats});
@@ -88,7 +89,7 @@ for(const b of nearby(playerCells,p))if(Math.abs(p.x-b.x)<b.w+.1&&Math.abs(p.z-b
 for(const b of nearby(roofCells,p)){if(Math.abs(p.x-b.x)>b.w||Math.abs(p.z-b.z)>b.d)continue;const top=b.y+b.h*(1-Math.abs(p.x-b.x)/b.w);if(p.y>=top+1.7)y=Math.max(y,top);}
 for(const t of towers)if(Math.abs(p.x-t.x)<14.5&&Math.abs(p.z-t.z)<14.5&&p.y>=t.y+1.7)y=Math.max(y,t.y);
 // Boulevard top is physically walkable, including its intersection.
-if((Math.abs(p.x)<21.5&&Math.abs(p.z)<5150)||(Math.abs(p.z)<15&&Math.abs(p.x)<4950))y=Math.max(y,.18);
+y=Math.max(y,streetHeight(p.x,p.z));
 return Math.max(y,city?.floor(p)||0);}
 export function ceilingHeight(p,oldY){let ceiling=Infinity;for(const b of nearby(playerCells,p))if(Math.abs(p.x-b.x)<b.w+.45&&Math.abs(p.z-b.z)<b.d+.45&&oldY+.25<=b.minY+.02)ceiling=Math.min(ceiling,b.minY-.25);return Math.min(ceiling,city?.ceiling(p,oldY)??Infinity);}
 export function blocked(p){const dist=Math.hypot(p.x,p.z);for(const w of nearby(wallCells,p))if(wallDistance(p,w)<9&&p.y-1.8<w.h)return true;

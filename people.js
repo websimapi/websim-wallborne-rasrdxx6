@@ -1,37 +1,19 @@
 import * as T from 'three';
-import {GLTFLoader} from 'https://esm.sh/three@0.170.0/examples/jsm/loaders/GLTFLoader.js';
-import {clone as cloneSkeleton} from 'https://esm.sh/three@0.170.0/examples/jsm/utils/SkeletonUtils.js';
 import {citizens,citizenPose,isShop} from './server.js';
 import {createTownLife} from './town-life.js';
-import {blocked as townBlocked} from './world.js';
-import {prepareFace} from './speech.js';
+import {blocked as townBlocked,terrainHeight} from './world.js';
 import {createStall} from './town-props.js';
-const UP=new T.Vector3(0,1,0),loader=new GLTFLoader();
-const fabrics={};const textureLoader=new T.TextureLoader();for(const name of ['brocade','navy','linen','canvas']){const map=textureLoader.load('img/'+name+'.jpg');map.colorSpace=T.SRGBColorSpace;map.wrapS=map.wrapT=T.RepeatWrapping;map.anisotropy=8;fabrics[name]=map;}
-const templates=Promise.allSettled([loader.loadAsync('models/human.glb'),loader.loadAsync('models/civilian.glb')]);
-const metal=new T.MeshStandardMaterial({color:'#8a989a',metalness:.8,roughness:.35}),leather=new T.MeshStandardMaterial({color:'#45342b',roughness:.85}),gold=new T.MeshStandardMaterial({color:'#bca472',metalness:.6,roughness:.4});
-function accessory(root,geometry,material,x,y,z){const mesh=new T.Mesh(geometry,material);mesh.position.set(x,y,z);mesh.castShadow=true;mesh.userData.localGeometry=true;root.add(mesh);return mesh;}
-function lowerArms(model){model.updateMatrixWorld(true);for(const side of ['Left','Right'])for(const pair of [['Arm','ForeArm'],['ForeArm','Hand']]){const bone=model.getObjectByName('mixamorig:'+side+pair[0])||model.getObjectByName('mixamorig'+side+pair[0]),child=model.getObjectByName('mixamorig:'+side+pair[1])||model.getObjectByName('mixamorig'+side+pair[1]);if(!bone||!child)continue;model.updateMatrixWorld(true);const a=bone.getWorldPosition(new T.Vector3()),b=child.getWorldPosition(new T.Vector3()),direction=new T.Vector3(side==='Left'?.1:-.1,-1,.06).normalize(),rotation=new T.Quaternion().setFromUnitVectors(b.sub(a).normalize(),direction),world=bone.getWorldQuaternion(new T.Quaternion()).premultiply(rotation),parent=bone.parent.getWorldQuaternion(new T.Quaternion());bone.quaternion.copy(parent.invert().multiply(world));}model.updateMatrixWorld(true);}
+import {humanTemplates,createHuman} from './human-model.js';
+import {createResidentAI} from './resident-ai.js';
+const UP=new T.Vector3(0,1,0);
 export function createPeople(scene){
  const specs=citizens(),actors=new Map(),flights=new Map(),grid=new Map(),frustum=new T.Frustum(),projection=new T.Matrix4(),sphere=new T.Sphere(new T.Vector3(),2.1);let models=null,time=0,scanAt=-1,lastFocus=new T.Vector3(0,2,1030),budget=28;
  const town=createTownLife(specs,actors);
  for(const spec of specs){const key=Math.floor(spec.x/96)+','+Math.floor(spec.z/96);if(!grid.has(key))grid.set(key,[]);grid.get(key).push(spec);}
- templates.then(result=>{const loaded=result.map(r=>r.status==='fulfilled'?r.value:null);if(!loaded.some(Boolean))throw new Error('Human model assets unavailable');models=[loaded[0]||loaded[1],loaded[1]||loaded[0]];}).catch(e=>console.warn('Humanoids:',e.message));
- function spawn(spec){if(!models)return null;const military=!!spec.rank,template=models[military?0:1],model=cloneSkeleton(template.scene),root=new T.Group();root.add(model);const bounds=new T.Box3().setFromObject(model),height=bounds.max.y-bounds.min.y,scale=1.78/Math.max(.1,height);model.scale.multiplyScalar(scale);model.position.y=-bounds.min.y*scale;model.traverse(m=>{if(m.isMesh){m.castShadow=true;m.frustumCulled=false;if(m.material){m.material=m.material.clone();m.material.roughness=.85;}}});
- let mixer=null;if(military){mixer=new T.AnimationMixer(model);const idle=template.animations.find(a=>a.name==='Idle');if(idle)mixer.clipAction(idle).play();}else{const pose=template.animations.find(a=>a.name==='TPose');if(pose){const mix=new T.AnimationMixer(model);mix.clipAction(pose).play();mix.update(0);}lowerArms(model);}
- const rich=['Noble','Royal official','Military Police'].includes(spec.kind),map=fabrics[military?'canvas':rich?'brocade':spec.region===1?'navy':'linen'],cloth=new T.MeshStandardMaterial({map,color:military?'#73816c':rich?'#ccb3a6':'#d7c8ab',roughness:.94,side:T.DoubleSide});
- // Tailored outer layers cover the base model's modern clothing.
- const tunic=accessory(root,new T.CylinderGeometry(.235,.29,.66,24,4,true),cloth,0,1.12,0);tunic.scale.z=.65;
- if(!military){const skirt=accessory(root,new T.CylinderGeometry(.25,rich?.43:.35,.84,28,6,true),cloth,0,.55,0);skirt.scale.z=.8;}
- const capeGeo=new T.PlaneGeometry(.72,.9,10,14),pos=capeGeo.attributes.position;for(let i=0;i<pos.count;i++)pos.setZ(i,Math.sin(pos.getX(i)*16)*.025+Math.max(0,-pos.getY(i))*.12);capeGeo.computeVertexNormals();const cape=accessory(root,capeGeo,cloth,0,1.06,-.21);cape.rotation.x=.04;
- const belt=accessory(root,new T.TorusGeometry(.25,.025,8,32),leather,0,.91,0);belt.rotation.x=Math.PI/2;belt.scale.z=.68;accessory(root,new T.BoxGeometry(.09,.08,.035),rich?gold:metal,0,.91,.21);
- if(rich){accessory(root,new T.TorusGeometry(.13,.023,8,28),gold,0,1.67,0).rotation.x=Math.PI/2;accessory(root,new T.SphereGeometry(.035,12,8),gold,0,1.31,.21);}
- if(military){for(const side of [-1,1]){accessory(root,new T.BoxGeometry(.16,.3,.35),metal,side*.31,.8,-.07);const gas=accessory(root,new T.CylinderGeometry(.065,.065,.3,12),metal,side*.3,.88,-.22);gas.rotation.z=Math.PI/2;accessory(root,new T.TorusGeometry(.075,.018,6,18),leather,side*.39,.83,-.02).rotation.y=Math.PI/2;accessory(root,new T.BoxGeometry(.045,.025,.85),metal,side*.43,.79,.36);const strap=accessory(root,new T.BoxGeometry(.038,.57,.025),leather,side*.14,1.15,.19);strap.rotation.z=side*.3;}
- const stripes=spec.rank==='Captain'?3:spec.rank==='Sergeant'?2:1;for(let i=0;i<stripes;i++)accessory(root,new T.BoxGeometry(.1,.015,.025),gold,.16,1.36-i*.03,.21);}
- const walkClip=models[0].animations.find(a=>a.name==='Walk');if(!mixer)mixer=new T.AnimationMixer(model);let walk=null;if(walkClip){const tracks=walkClip.tracks.filter(track=>track.name.endsWith('.quaternion')&&model.getObjectByName(track.name.slice(0,track.name.lastIndexOf('.'))));if(tracks.length){walk=mixer.clipAction(new T.AnimationClip('TownWalk',walkClip.duration,tracks));walk.setEffectiveWeight(0);walk.play();}}
- const face=prepareFace(model);root.position.set(spec.x,spec.y,spec.z);root.rotation.y=spec.angle;scene.add(root);const label=document.createElement('div');label.className='npcSpeaker';label.hidden=true;document.body.append(label);const stall=isShop(spec)?createStall(scene,spec):null;const actor={spec,root,mixer,walk,face,stall,cape,label,until:0,lookAt:null,lastWanted:time,animationAcc:0};actors.set(spec.id,actor);return actor;
- }
- function remove(id){const a=actors.get(id);if(!a)return;scene.remove(a.root);a.label.remove();a.stall?.remove();a.mixer?.stopAllAction();a.root.traverse(o=>{if(o.isMesh){if(o.userData.localGeometry)o.geometry.dispose();if(![metal,leather,gold].includes(o.material))o.material?.dispose();}});actors.delete(id);}
+ humanTemplates.then(loaded=>models=loaded).catch(e=>console.warn('Humanoids:',e.message));
+ const intelligence=createResidentAI(actors);
+ function spawn(spec){if(!models)return null;const human=createHuman(models,spec),root=human.root;root.position.set(spec.x,spec.y,spec.z);root.rotation.y=spec.angle;scene.add(root);const label=document.createElement('div');label.className='npcSpeaker';label.hidden=true;document.body.append(label);const stall=isShop(spec)?createStall(scene,spec):null;const actor={...human,spec,stall,label,until:0,lookAt:null,lastWanted:time,animationAcc:0};actors.set(spec.id,actor);return actor;}
+ function remove(id){const a=actors.get(id);if(!a)return;scene.remove(a.root);a.label.remove();a.stall?.remove();a.mixer?.stopAllAction();a.root.traverse(o=>{if(o.isMesh){if(o.userData.localGeometry)o.geometry.dispose();for(const m of Array.isArray(o.material)?o.material:[o.material])m?.dispose();}});actors.delete(id);}
  function engage(event){for(const [id,flight]of flights)if(flight.post===event.post){scene.remove(flight.cable);flight.cable?.geometry.dispose();flight.cable?.material.dispose();flights.delete(id);}const spec=specs.find(n=>n.post===event.post);if(!spec||Math.hypot(spec.x-lastFocus.x,spec.z-lastFocus.z)>650)return;flights.set(spec.id,{...event,started:performance.now(),actor:actors.get(spec.id)||spawn(spec)});}
  function update(dt,camera,position,active,serverTime,titans,allowInitiate=true){
  time+=dt;lastFocus.copy(position);budget=T.MathUtils.damp(budget,dt>.032?18:28,.5,dt);projection.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);frustum.setFromProjectionMatrix(projection);
@@ -39,14 +21,16 @@ export function createPeople(scene){
  found.sort((a,b)=>a.dist-b.dist);const chosen=found.slice(0,Math.round(budget)),wanted=new Set(chosen.map(v=>v.n.id));let spawned=0;for(const {n}of chosen){const a=actors.get(n.id);if(a)a.lastWanted=time;else if(spawned<2&&actors.size<36){spawn(n);spawned++;}}
  for(const [id,a]of actors)if(!wanted.has(id)&&!flights.has(id)&&a.until<time&&time-a.lastWanted>1.8)remove(id);
  }
- for(const [id,actor]of actors){const distance=actor.root.position.distanceTo(position);sphere.center.copy(actor.root.position).add(new T.Vector3(0,1,0));actor.root.visible=distance<12||actor.until>time||frustum.intersectsSphere(sphere);actor.flying=flights.has(id);actor.stall?.update(position,camera);
- actor.animationAcc+=dt;if(actor.root.visible&&(distance<30||actor.animationAcc>(distance<70?.065:.12))){actor.mixer?.update(actor.animationAcc);actor.animationAcc=0;}actor.cape.rotation.x=.04+Math.sin(time*2+id)*.025;
+ for(const [id,actor]of actors){const distance=actor.root.position.distanceTo(position);sphere.center.copy(actor.root.position).add(new T.Vector3(0,1,0));actor.root.visible=distance<12||actor.until>time||frustum.intersectsSphere(sphere);actor.flying=flights.has(id);actor.stall?.update?.(position,camera);
+ actor.animationAcc+=dt;if(actor.root.visible&&(distance<30||actor.animationAcc>(distance<70?.065:.12))){actor.mixer?.update(actor.animationAcc);actor.animationAcc=0;}
  const projected=actor.root.position.clone().add(new T.Vector3(0,2.1,0)).project(camera),visible=actor.until>time&&projected.z>0&&projected.z<1&&Math.abs(projected.x)<1&&Math.abs(projected.y)<1;actor.label.hidden=!visible;if(visible){actor.label.textContent=actor.spec.name+' · '+(actor.spec.rank||actor.spec.kind);actor.label.style.left=(projected.x*.5+.5)*innerWidth+'px';actor.label.style.top=(-projected.y*.5+.5)*innerHeight+'px';}
  const flight=flights.get(id);if(flight){const elapsed=(performance.now()-flight.started)/1000,t=elapsed/(flight.duration/1000),target=titans[flight.titan];if(target){const start=new T.Vector3(flight.from.x,flight.from.y,flight.from.z),dest=target.root.position.clone().add(new T.Vector3(-Math.sin(target.root.rotation.y)*target.s*1.3,target.s*16.2,-Math.cos(target.root.rotation.y)*target.s*1.3)),p=t<.45?t/.45:1-(t-.45)/.55;actor.root.position.copy(start).lerp(dest,T.MathUtils.smoothstep(p,0,1));actor.root.position.y+=Math.sin(Math.max(0,Math.min(1,p))*Math.PI)*18;actor.root.lookAt(dest);if(!flight.cable){const geo=new T.BufferGeometry().setFromPoints([start,actor.root.position,start,actor.root.position]);flight.cable=new T.LineSegments(geo,new T.LineBasicMaterial({color:'#314448'}));flight.cable.frustumCulled=false;scene.add(flight.cable);}const anchor=t<.45?dest:start;flight.cable.geometry.setFromPoints([actor.root.position.clone().add(new T.Vector3(-.3,.9,0)),anchor.clone().add(new T.Vector3(-.35,1,0)),actor.root.position.clone().add(new T.Vector3(.3,.9,0)),anchor.clone().add(new T.Vector3(.35,1,0))]);}if(t>=1){actor.root.position.set(actor.spec.x,actor.spec.y,actor.spec.z);actor.root.rotation.set(0,actor.spec.angle,0);scene.remove(flight.cable);flight.cable?.geometry.dispose();flight.cable?.material.dispose();flights.delete(id);}continue;}
- const pose=citizenPose(actor.spec,serverTime||Date.now()),talking=actor.until>time;actor.walk?.setEffectiveWeight(talking?0:pose.moving?1:0);
- if(!talking){const candidate=new T.Vector3(pose.x,pose.y,pose.z);if(!residentBlocked(candidate))actor.root.position.lerp(candidate,1-Math.exp(-dt*9));actor.root.rotation.y=turnAngle(actor.root.rotation.y,pose.angle,dt*5);}
- else if(actor.lookAt)actor.root.rotation.y=turnAngle(actor.root.rotation.y,Math.atan2(actor.lookAt.x-actor.root.position.x,actor.lookAt.z-actor.root.position.z),dt*5);
+ const talking=actor.until>time;
+ if(!talking){const before=actor.root.position.clone();intelligence.move(actor,dt,time,titans,residentBlocked,terrainHeight);const speed=before.distanceTo(actor.root.position)/Math.max(.001,dt);actor.setActivity(speed>2?'run':speed>.1?'walk':actor.intent?.action==='work'?'work':'idle');if(speed>.02)actor.root.rotation.y=turnAngle(actor.root.rotation.y,Math.atan2(actor.root.position.x-before.x,actor.root.position.z-before.z),dt*5);}
+ else{actor.setActivity('idle');if(actor.lookAt)actor.root.rotation.y=turnAngle(actor.root.rotation.y,Math.atan2(actor.lookAt.x-actor.root.position.x,actor.lookAt.z-actor.root.position.z),dt*5);}
+
  }
+ intelligence.update(dt,position,active&&!town.focused(),time,titans);
  town.update(dt,camera,position,active,titans.some(t=>!t.dead&&t.root.position.distanceTo(position)<220));
  }
  return{update,engage,isTyping:town.isTyping,dialogueOpen:town.focused,directCamera:town.directCamera};

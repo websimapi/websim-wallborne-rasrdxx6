@@ -1,11 +1,18 @@
 # Asset credits
 
-Detailed rigged human base meshes and embedded textures:
-- Soldier / Vanguard model, distributed with the three.js examples: https://threejs.org/examples/models/gltf/Soldier.glb
-- Michelle character, distributed with the three.js examples: https://threejs.org/examples/models/gltf/Michelle.glb
+## Active human characters
+KayKit: Adventurers Character Pack 1.0, by **Kay Lousberg** (https://kaylousberg.com/).
+Source: https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0
+License: **CC0 1.0 Universal** (public domain), full supplied license in models/KayKit-LICENSE.txt.
 
-Both assets are kept locally under models/. The civilian asset retains its full geometry and rig; normals/weights/UVs and embedded images have been optimized for transfer using KHR_mesh_quantization. Clothing overlays, cloaks, rank insignia, VME equipment and tower engagement animation are implemented in people.js. Cloth materials were generated for this project.
+Locally hosted models: Knight (city guards), Rogue (townspeople and traders), Mage (robed officials, with wizard hat and magical props hidden). Models are unarmed except for locally added gas-gear fittings on guards. All use their original rigged body, clothing and native idle, walking, running and interaction animations. Unused animation data was removed for smaller downloads. No hotlinked assets.
 
-Wall layout and half-timber architectural direction follow the creator's supplied references under uploads/image-2.png and uploads/image-3.png. The three enclosing rings remain sealed and collision-enabled; each ring now has four projecting districts.
+Human meshes are normalized to 1.65–1.85 metres using a separate non-animated parent, with feet aligned to the ground. Model animation cannot overwrite this size normalization.
 
-Conversations are generated on the server using env.AI.chat. Resident intents and speaker/target IDs are validated before reaching the client. No scripted text is presented as an AI-generated conversation.
+## Legacy files
+The previously used three.js Soldier/Vanguard and Michelle models remain in models/human.glb and models/civilian.glb for project history, but are no longer loaded or displayed.
+
+## World and behavior
+Cloth and architectural textures were generated for this project. Walls and half-timber architecture follow the creator's references under uploads/.
+
+Resident decisions and spoken conversations are generated server-side with env.AI.chat. Movement follows validated destinations with local wall/people avoidance and an immediate civilian safety response to nearby titans. AI requests are batched, limited to nearby residents and rate-limited; an unavailable model leaves residents idle rather than presenting scripted behavior as generated AI. Signed-in conversations retain personal memories using the existing NPC memory store.
