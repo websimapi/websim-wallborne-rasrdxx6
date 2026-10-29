@@ -1,8 +1,8 @@
 // All homes are hollow: wall openings, accessible rooms and solid furnishings.
 export function createArchitecture({cube,inst,solid,roofSolid,box,roofGeo,cyl,mats}){
  const {stone,plaster,wood,roof,dark,trim,gold,cloth,poorPlaster,poorRoof,slate,rug,glass}=mats;
- return function house(x,z,w,d,region=1,royal=false){
- const rich=region===0,poor=region===2,h=rich?(royal?12:9):poor?5.7:7.5;
+ return function house(x,z,w,d,region=1,royal=false,spec={}){
+ const rich=region===0,poor=region===2,h=spec.height||(rich?(royal?12:9):poor?5.7:7.5);
  const wall=rich?stone:poor?poorPlaster:plaster,beam=rich?trim:wood,tile=rich?slate:poor?poorRoof:roof;
  const deco=(m,dx,y,dz,sx,sy,sz,ry=0)=>cube(m,x+dx,y,z+dz,sx,sy,sz,ry);
  const body=(m,dx,y,dz,sx,sy,sz)=>solid(m,x+dx,y,z+dz,sx,sy,sz);
@@ -26,11 +26,20 @@ export function createArchitecture({cube,inst,solid,roofSolid,box,roofGeo,cyl,ma
  cursor=o.p+o.w/2;}
  panel((cursor+length/2)/2,h/2,length/2-cursor,h);
  }
- face('x',-d/2,w,true);face('x',d/2,w);face('z',-w/2,d);face('z',w/2,d);
+ face('x',-d/2,w,true);face('x',d/2,w);face('z',-w/2,d,spec.variant===4);face('z',w/2,d,spec.variant===1);
  body(wood,0,-.04,0,w,.16,d);body(wood,0,h,0,w,.32,d);
- const roofHeight=rich?6:poor?3.5:4.5;
+ const roofHeight=spec.roof||(rich?6:poor?3.5:4.5);
  inst(roofGeo,tile,x,h+.16,z,w+1.8,roofHeight,d+1.8,0,true);
  roofSolid(x,z,w/2+.9,d/2+.9,h+.16,roofHeight);
+ // Bay extensions and cross-gables vary the footprint and skyline.
+ if(spec.variant===1||spec.variant===4){
+ const side=spec.variant===1?1:-1,bw=w*.28,bd=d*.38,bx=side*(w/2+bw/2),bz=d*.1;
+ body(wall,bx,h*.38,bz+bd/2,bw,h*.76,.5);body(wall,bx,h*.38,bz-bd/2,bw,h*.76,.5);body(wall,side*(w/2+bw),h*.38,bz,.5,h*.76,bd);body(wood,bx,-.04,bz,bw,.16,bd);
+ inst(roofGeo,tile,x+bx,h*.76,z+bz,bw+1,roofHeight*.7,bd+1,Math.PI/2,true);
+ // Remove a side-wall section through the extension's doorway in the collector.
+ spec.bay={side,bz,width:bd};
+ }
+ if(spec.variant===2||spec.variant===5){for(const s of [-1,1]){deco(wall,s*w*.25,h+roofHeight*.22,-d*.22,2.4,2.5,2);inst(roofGeo,tile,x+s*w*.25,h+roofHeight*.22+1.25,z-d*.22,3.2,2,3,Math.PI/2);}}
  // Exposed framing, stone quoins, cornices and ridge caps.
  for(const s of [-1,1])for(const t of [-1,1]){deco(beam,s*w/2,h/2,t*d/2,.35,h,.65);if(rich)for(let y=.6;y<h;y+=1.3)deco(trim,s*w/2,y,t*d/2,1.05,.55,1.05);}
  for(const y of [1,h-.45]){deco(beam,0,y,-d/2-.3,w+.7,.25,.25);deco(beam,0,y,d/2+.3,w+.7,.25,.25);}

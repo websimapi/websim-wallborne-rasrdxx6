@@ -1,11 +1,11 @@
 import * as T from 'three';
-import {createWorld,RADII,terrainHeight,ceilingHeight,blocked} from './world.js';
+import {createWorld,RADII,terrainHeight,ceilingHeight,blocked,updateWorld,damageBuilding} from './world.js';
 import {createTitans,updateTitans,titans} from './titans.js';
 import {createMultiplayer} from './multiplayer.js';
 import {DualGrapple} from './dual-grapple.js';
 const $=id=>document.getElementById(id),canvas=$('game');
 const renderer=new T.WebGLRenderer({canvas,antialias:true,logarithmicDepthBuffer:true,powerPreference:'high-performance'});renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));renderer.setSize(innerWidth,innerHeight);renderer.setClearColor(0xa9bdc5);renderer.outputColorSpace=T.SRGBColorSpace;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.2;
-const scene=new T.Scene();scene.background=new T.Color('#acbec7');scene.fog=new T.FogExp2('#acbec7',.000135);const camera=new T.PerspectiveCamera(75,innerWidth/innerHeight,.12,26000);scene.add(camera);
+const scene=new T.Scene();scene.background=new T.Color('#acbec7');scene.fog=new T.FogExp2('#acbec7',.000135);const camera=new T.PerspectiveCamera(75,innerWidth/innerHeight,.12,26000);scene.add(camera);camera.position.set(170,145,920);
 scene.add(new T.HemisphereLight('#d6e9ff','#737a58',2.6));const sun=new T.DirectionalLight('#ffe1b4',3.5);sun.position.set(-400,600,700);sun.target.position.set(0,0,1120);scene.add(sun.target);scene.add(sun);renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);sun.shadow.camera.left=-220;sun.shadow.camera.right=220;sun.shadow.camera.top=220;sun.shadow.camera.bottom=-220;sun.shadow.camera.near=1;sun.shadow.camera.far=1600;sun.shadow.bias=-.001;sun.shadow.normalBias=.2;
 // A luminous sun disk and a quiet, blue atmospheric horizon.
 const sunDisk=new T.Mesh(new T.SphereGeometry(220,24,16),new T.MeshBasicMaterial({color:'#fff4d2',fog:false}));sunDisk.position.set(-10500,15000,-6600);scene.add(sunDisk);
@@ -32,7 +32,8 @@ const net=createMultiplayer(scene,{
  correct(c){player.pos.set(c.x,c.y,c.z);player.vel.set(0,0,0);detach(true);},
  hurt(m){player.hp=m.character.hp;if(m.rescued){applyCharacter(m.character);detach();message('Rescued');}else{player.vel.add(new T.Vector3(m.knock.x,m.knock.y,m.knock.z));}damageTime=.7;$('damage').style.opacity=.7;},
  saved(ok){$('saveStatus').classList.toggle('error',!ok);$('saveStatus').title=ok?'Character saved':'Save failed · retrying';},
- hit(dead){message(dead?'Titan down':'Hit');}
+ hit(dead){message(dead?'Titan down':'Hit');},
+ buildingDamage(event){damageBuilding(event);}
 });
 function requestLook(){if(!touch){try{const request=canvas.requestPointerLock?.();request?.catch(()=>{});}catch{}}}
 function start(){if(net.ready)requestLook();net.join();}
@@ -72,7 +73,7 @@ const radar=$('radar').getContext('2d');let uiTick=0;function hud(dt){uiTick+=dt
 const point=step<2?beacon.position.clone().add(new T.Vector3(0,3,0)):step===2?new T.Vector3(52,110,1200):null;if(point){const projected=point.clone().project(camera);const visible=point.sub(camera.position).dot(forward)>0;$('marker').style.display=visible?'flex':'none';$('marker').style.left=T.MathUtils.clamp((projected.x*.5+.5)*innerWidth,65,innerWidth-150)+'px';$('marker').style.top=T.MathUtils.clamp((-projected.y*.5+.5)*innerHeight,230,innerHeight-180)+'px';$('markerText').textContent=Math.round(player.pos.distanceTo(step===2?new T.Vector3(52,110,1200):beacon.position))+' M';}else $('marker').style.display='none';
 if(uiTick>.12){uiTick=0;radar.clearRect(0,0,160,160);radar.save();radar.translate(80,80);radar.fillStyle='#142d3644';radar.beginPath();radar.arc(0,0,76,0,Math.PI*2);radar.fill();for(let i=0;i<3;i++){radar.strokeStyle=i===0?'#f6d39c99':'#e4f0ed66';radar.lineWidth=1;radar.beginPath();radar.arc(0,0,RADII[i]/65,0,Math.PI*2);radar.stroke();}radar.fillStyle='#e1aa88';for(const t of titans){if(t.dead)continue;let x=t.root.position.x/65,z=-t.root.position.z/65;if(Math.hypot(x,z)<76)radar.fillRect(x-1,z-1,2,2);}let x=player.pos.x/65,z=-player.pos.z/65;radar.translate(x,z);radar.rotate(yaw);radar.fillStyle='#ffdaa0';radar.beginPath();radar.moveTo(0,-5);radar.lineTo(-3.5,4);radar.lineTo(3.5,4);radar.closePath();radar.fill();radar.restore();}}
 const spectatorTarget=new T.Vector3(0,58,1260);
-function frame(now){requestAnimationFrame(frame);let dt=last===null?1/60:T.MathUtils.clamp((now-last)/1000,0,.04);last=now;time+=dt;if(active&&net.joined){physics(dt);}else forward.set(Math.sin(yaw)*Math.cos(pitch),-Math.sin(pitch),Math.cos(yaw)*Math.cos(pitch));
+function frame(now){requestAnimationFrame(frame);let dt=last===null?1/60:T.MathUtils.clamp((now-last)/1000,0,.04);last=now;time+=dt;updateWorld(dt,inWorld?player.pos:camera.position);if(active&&net.joined){physics(dt);}else forward.set(Math.sin(yaw)*Math.cos(pitch),-Math.sin(pitch),Math.cos(yaw)*Math.cos(pitch));
 updateTitans(dt,net.time,scene);grapple.yaw=yaw;if(inWorld&&!active)grapple.update(dt,player.pos,titans.filter(t=>!t.dead).map(t=>t.root),unlocked,false);if(inWorld&&net.joined)net.move(dt,player,yaw,pitch,hooked?hookPos:null,!!keys.Space,grapple.networkData());
 if(inWorld){camera.position.copy(player.pos);if(active&&grounded)camera.position.y+=Math.sin(time*12)*Math.min(.045,player.vel.length()*.004);camera.lookAt(camera.position.clone().add(forward));}else{
 const focus=net.focus(time);let target,view;if(focus){target=focus.clone().add(new T.Vector3(0,2,0));view=focus.clone().add(new T.Vector3(22+Math.sin(time*.12)*7,16,-26));}else if(Math.floor(time/22)%2===1){const titan=titans[2];target=titan.root.position.clone().add(new T.Vector3(0,14,0));view=target.clone().add(new T.Vector3(70,35,-110));}else{target=new T.Vector3(0,58,1260);view=new T.Vector3(170+Math.sin(time*.055)*100,145,920);}

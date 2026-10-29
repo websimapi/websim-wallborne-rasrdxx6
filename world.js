@@ -1,6 +1,9 @@
 import * as T from 'three';
 import {addCollider} from './collision.js';
-import {createArchitecture} from './architecture.js';
+import {createCity} from './city.js';
+export let city=null;
+export function updateWorld(dt,focus){city?.update(dt,focus);}
+export function damageBuilding(event){city?.damage(event);}
 export const RADII=[1200,2700,4500];
 export const towers=[],solids=[];
 const playerCells=new Map(),roofCells=new Map(),CELL=64;
@@ -9,7 +12,7 @@ function index(map,item,x,z,w,d){for(let i=Math.floor((x-w)/CELL);i<=Math.floor(
 const nearby=(map,p)=>map.get(Math.floor(p.x/CELL)+','+Math.floor(p.z/CELL))||[];
 export function createWorld(scene){
 const loader=new T.TextureLoader();
-function tex(name){const t=loader.load('img/'+name+'.jpg');t.colorSpace=T.SRGBColorSpace;t.wrapS=t.wrapT=T.RepeatWrapping;t.anisotropy=4;return t;}
+function tex(name){const t=loader.load('img/'+name+'-seamless.png');t.colorSpace=T.SRGBColorSpace;t.wrapS=t.wrapT=T.RepeatWrapping;t.anisotropy=8;t.generateMipmaps=true;t.minFilter=T.LinearMipmapLinearFilter;t.magFilter=T.LinearFilter;return t;}
 const maps={stone:tex('stone'),plaster:tex('plaster'),tiles:tex('tiles'),timber:tex('timber')};
 const mat=(c,map=null)=>{const m=new T.MeshStandardMaterial({color:c,map,roughness:.94});if(map)m.onBeforeCompile=shader=>{shader.vertexShader=shader.vertexShader.replace('#include <uv_vertex>',`#include <uv_vertex>
 #ifdef USE_MAP
@@ -17,7 +20,9 @@ vec4 surfacePosition=vec4(position,1.0);
 vec3 surfaceNormal=normal;
 #ifdef USE_INSTANCING
 surfacePosition=instanceMatrix*surfacePosition;
-surfaceNormal=mat3(instanceMatrix)*surfaceNormal;
+mat3 instanceNormalMatrix=mat3(instanceMatrix);
+surfaceNormal/=vec3(dot(instanceNormalMatrix[0],instanceNormalMatrix[0]),dot(instanceNormalMatrix[1],instanceNormalMatrix[1]),dot(instanceNormalMatrix[2],instanceNormalMatrix[2]));
+surfaceNormal=instanceNormalMatrix*surfaceNormal;
 #endif
 surfacePosition=modelMatrix*surfacePosition;
 surfaceNormal=normalize(mat3(modelMatrix)*surfaceNormal);
@@ -25,6 +30,8 @@ vec3 surfaceAxis=abs(surfaceNormal);
 vMapUv=(surfaceAxis.y>surfaceAxis.x&&surfaceAxis.y>surfaceAxis.z?surfacePosition.xz:surfaceAxis.x>surfaceAxis.z?surfacePosition.zy:surfacePosition.xy)*.35;
 #endif`);};return m;};
 const stone=mat('#a8a89a',maps.stone),lightStone=mat('#d1ceba',maps.stone),roof=mat('#a39282',maps.tiles),plaster=mat('#e0d3b5',maps.plaster),wood=mat('#a09079',maps.timber),dark=mat('#27363a'),grass=mat('#718166'),metal=mat('#424a49');
+// Continuous mineral paving ties the dense street blocks together without grass gaps.
+for(const [inner,outer,color]of [[0,1200,'#b5ad96'],[1200,2700,'#a49b83'],[2700,4490,'#96886d']]){const geo=inner?new T.RingGeometry(inner,outer,192):new T.CircleGeometry(outer,128),surface=new T.Mesh(geo,mat(color,maps.stone));surface.rotation.x=-Math.PI/2;surface.position.y=.012;surface.receiveShadow=true;scene.add(surface);}
 const box=new T.BoxGeometry(1,1,1),cyl=new T.CylinderGeometry(1,1,1,8);
 // A real gabled prism, not a four-sided cone perched on a solid building.
 const shape=new T.Shape();shape.moveTo(-.5,0);shape.lineTo(.5,0);shape.lineTo(0,1);shape.closePath();const roofGeo=new T.ExtrudeGeometry(shape,{depth:1,bevelEnabled:false,steps:1});roofGeo.translate(0,0,-.5);
@@ -51,22 +58,8 @@ for(const face of [-1,1]){for(let k=-10;k<=10;k++)cube(wood,k*5.5,14.7,z+face*3.
 const road=mat('#b4aa92',maps.stone);road.polygonOffset=true;road.polygonOffsetFactor=-1;road.polygonOffsetUnits=-2;
 cube(road,0,.09,0,43,.18,9500);for(const s of [-1,1])cube(road,s*(4500+21.5)/2,.09,0,4500-21.5,.18,30);
 const mats={stone,plaster,wood,roof,dark,trim:lightStone,gold:mat('#b49b54'),cloth:mat('#887a65'),poorPlaster:mat('#a9987c',maps.plaster),poorRoof:mat('#78685a',maps.tiles),slate:mat('#647078',maps.tiles),rug:mat('#693b3a'),glass:mat('#4d6850')};
-const house=createArchitecture({cube,inst,solid,roofSolid,box,roofGeo,cyl,mats});
-const footprints=[];
-function home(x,z,w,d,region,royal=false){house(x,z,w,d,region,royal);footprints.push({x,z,w:w/2+7,d:d/2+7});}
-// Wealth changes with distance: estates, merchant streets, then small patched cottages.
-for(let z=-4290;z<=4290;z+=145)for(let x=-4290;x<=4290;x+=145){const dist=Math.hypot(x,z);if(dist>4330||dist<180||Math.abs(x)<65||Math.abs(z)<55||RADII.some(r=>Math.abs(dist-r)<95)||rand()>.7)continue;
-const region=dist<1200?0:dist<2700?1:2,px=x+(rand()-.5)*20,pz=z+(rand()-.5)*20;
-if(Math.abs(px)<95&&pz>980&&pz<1140)continue;
-const w=region===0?28+rand()*12:region===1?19+rand()*8:11+rand()*6,d=region===0?30+rand()*12:region===1?23+rand()*7:15+rand()*5;
-home(px,pz,w,d,region,region===0&&rand()>.72);
-if(region===2&&rand()>.55)home(px+40,pz+24,11+rand()*3,15+rand()*3,2);
-}
-// Furnished training courtyard homes remain at their original locations.
-home(37,1045,24,27,0);home(-39,1085,26,30,0);home(40,1100,26,28,0);
-// Central royal residence: a grand receiving hall and two enterable wings.
-home(140,140,64,70,0,true);home(86,152,32,42,0,true);home(194,152,32,42,0,true);
-for(const s of [-1,1]){cube(lightStone,140+s*85,1.2,140,2,2.4,116);cube(lightStone,140+s*51,1.2,80,66,2.4,2);}
+city=createCity(scene,{box,roofGeo,cyl,mats});
+const footprints=city.buildings.map(b=>({x:b.x,z:b.z,w:b.w*.8+3,d:b.d*.8+3}));
 const rock=mat('#7b8074'),rockGeo=new T.IcosahedronGeometry(1,0);
 const boulder=(x,z,sx,sy,sz)=>{inst(rockGeo,rock,x,sy*.62,z,sx,sy,sz,rand()*6,true,true);const b={x,z,w:sx*.65,d:sz*.65,minY:0,h:sy*1.5};solids.push(b);index(playerCells,b,x,z,b.w+.8,b.d+.8);};
 for(const side of [-1,1]){boulder(side*24,1071,1.5,1.2,2);boulder(side*26.6,1072,1.3,1.7,1.6);boulder(side*23,1105,1.8,1.8,1.5);boulder(side*26,1104,1.1,1.5,1.8);}
@@ -86,8 +79,8 @@ for(const b of nearby(roofCells,p)){if(Math.abs(p.x-b.x)>b.w||Math.abs(p.z-b.z)>
 for(const t of towers)if(Math.hypot(p.x-t.x,p.z-t.z)<15&&p.y>=107)y=Math.max(y,105);
 // Boulevard top is physically walkable, including its intersection.
 if((Math.abs(p.x)<21.5&&Math.abs(p.z)<4750)||(Math.abs(p.z)<15&&Math.abs(p.x)<4500))y=Math.max(y,.18);
-return y;}
-export function ceilingHeight(p,oldY){let ceiling=Infinity;for(const b of nearby(playerCells,p))if(Math.abs(p.x-b.x)<b.w+.45&&Math.abs(p.z-b.z)<b.d+.45&&oldY+.25<=b.minY+.02)ceiling=Math.min(ceiling,b.minY-.25);return ceiling;}
+return Math.max(y,city?.floor(p)||0);}
+export function ceilingHeight(p,oldY){let ceiling=Infinity;for(const b of nearby(playerCells,p))if(Math.abs(p.x-b.x)<b.w+.45&&Math.abs(p.z-b.z)<b.d+.45&&oldY+.25<=b.minY+.02)ceiling=Math.min(ceiling,b.minY-.25);return Math.min(ceiling,city?.ceiling(p,oldY)??Infinity);}
 export function blocked(p){const dist=Math.hypot(p.x,p.z);for(let i=0;i<RADII.length;i++)if(Math.abs(dist-RADII[i])<9&&p.y-1.8<80+i*5)return true;
 for(const b of nearby(playerCells,p))if(p.y-1.8<b.h-.02&&p.y+.25>b.minY+.02&&Math.abs(p.x-b.x)<b.w+.45&&Math.abs(p.z-b.z)<b.d+.45)return true;
-for(const t of towers)if(p.y<102&&Math.hypot(p.x-t.x,p.z-t.z)<15)return true;return false;}
+for(const t of towers)if(p.y<102&&Math.hypot(p.x-t.x,p.z-t.z)<15)return true;return city?.blocked(p)||false;}

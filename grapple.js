@@ -16,9 +16,10 @@ export class Grapple {
  fire(origin,direction,inheritedVelocity){if(this.active)return false;this.mode='flying';this.age=0;this.lastContact=null;this.snagNormals=[];this.object=null;this.hand.copy(origin);this.previousHand.copy(origin);this.tip.copy(origin).addScaledVector(direction,.7);this.velocity.copy(direction).multiplyScalar(350).addScaledVector(inheritedVelocity,.2);this.ropeLength=1.2;
  for(let i=0;i<COUNT;i++){this.points[i].copy(origin).lerp(this.tip,i/(COUNT-1));this.previous[i].copy(this.points[i]);}this.head.visible=true;this.lines.forEach(l=>l.visible=true);return true;}
  release(){if(!this.active||this.mode==='returning'||this.mode==='snagged')return;this.mode='returning';this.object=null;this.velocity.multiplyScalar(.12);this.lastContact=null;}
- latch(hit){this.mode='latched';this.tip.copy(hit.point);this.velocity.set(0,0,0);this.contactNormal.copy(hit.normal);this.object=hit.object||null;if(this.object){this.localAnchor.copy(this.tip);this.object.worldToLocal(this.localAnchor);}this.ropeLength=Math.max(4,this.hand.distanceTo(this.tip)+.4);}
+ latch(hit){this.anchorCollider=hit.collider||null;this.mode='latched';this.tip.copy(hit.point);this.velocity.set(0,0,0);this.contactNormal.copy(hit.normal);this.object=hit.object||null;if(this.object){this.localAnchor.copy(this.tip);this.object.worldToLocal(this.localAnchor);}this.ropeLength=Math.max(4,this.hand.distanceTo(this.tip)+.4);}
  snag(hit){this.mode='snagged';this.tip.copy(hit.point);this.velocity.set(0,0,0);this.snagNormals=[hit.normal.clone()];if(this.lastContact&&this.lastContact.normal.dot(hit.normal)<.55)this.snagNormals.push(this.lastContact.normal.clone());this.snagDirection=this.hand.clone().sub(this.tip).normalize();this.snagAge=0;this.ropeLength=Math.max(this.ropeLength,this.hand.distanceTo(this.tip)+.2);this.onSnag?.();}
  update(dt,origin,dynamic=[],allowTitan=true,boost=false){if(!this.active)return;this.hand.copy(origin);this.age+=dt;
+ if(this.mode==='latched'&&this.anchorCollider&&!this.anchorCollider.active)this.release();
  if(this.mode==='latched'){
  if(this.object){this.object.updateWorldMatrix(true,false);this.tip.copy(this.localAnchor).applyMatrix4(this.object.matrixWorld);}
  this.ropeLength=Math.max(4,this.ropeLength-(boost?125:78)*dt);
