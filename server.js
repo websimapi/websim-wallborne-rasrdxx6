@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS characters (
  hp REAL NOT NULL DEFAULT 100, gas REAL NOT NULL DEFAULT 100, step INTEGER NOT NULL DEFAULT 0,
  kills INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL
 );`;
-export function titanSpecs(){let seed=8917;const rnd=()=>{seed=seed*16807%2147483647;return(seed-1)/2147483646;};return Array.from({length:24},(_,id)=>{const height=17+rnd()*19,a=id<5?(id-2)*.035:rnd()*Math.PI*2,r=4800+rnd()*1900;return{id,height,s:height/20,x:Math.sin(a)*r,z:Math.cos(a)*r,phase:rnd()*6,style:id%4};});}
+export function titanSpecs(){let seed=8917;const rnd=()=>{seed=seed*16807%2147483647;return(seed-1)/2147483646;};return Array.from({length:24},(_,id)=>{const height=70+rnd()*50,a=id<5?(id-2)*.035:rnd()*Math.PI*2,r=4800+rnd()*1900;return{id,height,s:height/20,x:Math.sin(a)*r,z:Math.cos(a)*r,phase:rnd()*6,style:id%4};});}
 const players=new Map(),connections=new Map();
 const giants=titanSpecs().map(t=>({...t,yaw:0,hp:3,dead:false,attack:0,cooldown:0,stagger:0,moving:false,respawn:0,homeX:t.x,homeZ:t.z}));
 let lastTick=0,lastSnapshot=0;
@@ -52,7 +52,7 @@ if(old!==p.step){privateStats(p);p.lastSave=0;}return;}
 if(m.type==='slash'){if(p.step<3||now-p.lastSlash<400)return;p.lastSlash=now;room.broadcast({type:'slash',id:p.id});
 const fx=Math.sin(p.yaw)*Math.cos(p.pitch),fy=-Math.sin(p.pitch),fz=Math.cos(p.yaw)*Math.cos(p.pitch);
 for(const t of giants){if(t.dead)continue;const nape={x:t.x-Math.sin(t.yaw)*1.3*t.s,y:16.2*t.s,z:t.z-Math.cos(t.yaw)*1.3*t.s},body={x:t.x,y:10*t.s,z:t.z},leg={x:t.x,y:4*t.s,z:t.z};
-const lethal=distance(p,nape)<7*t.s;if(!lethal&&distance(p,body)>9*t.s&&distance(p,leg)>7*t.s)continue;
+const lethal=distance(p,nape)<3+1.3*t.s;if(!lethal&&distance(p,body)>3+3.2*t.s&&distance(p,leg)>3+2.5*t.s)continue;
 const len=distance(p,body)||1;if(((body.x-p.x)*fx+(body.y-p.y)*fy+(body.z-p.z)*fz)/len<-.3)continue;
 t.hp--;t.stagger=2;t.attack=0;if(lethal||t.hp<=0){t.dead=true;t.respawn=now+90000;p.kills++;p.dirty=true;p.lastSave=0;privateStats(p);}
 room.broadcast({type:'hit',id:p.id,titan:t.id,dead:t.dead,at:lethal?nape:{x:p.x+fx*2,y:p.y+fy*2,z:p.z+fz*2}});break;}
